@@ -502,6 +502,41 @@ class LeaderboardViewTests(TestCase):
         declined_student = next(row for row in res.data if row["username"] == "declined_student")
         self.assertEqual(declined_student["total_hours"], "0.00")
 
+    def test_leaderboard_periods_split_on_june_first_2026(self):
+        last_year_user = User.objects.create_user(
+            username="last_year_student", password="pass", email="last-year@example.com"
+        )
+        last_year_profile = StudentProfile.objects.create(user=last_year_user)
+        this_year_user = User.objects.create_user(
+            username="this_year_student", password="pass", email="this-year@example.com"
+        )
+        this_year_profile = StudentProfile.objects.create(user=this_year_user)
+        ServiceHour.objects.create(
+            student=last_year_profile,
+            description="Last day of last year",
+            hours=Decimal("5.00"),
+            date_performed=date(2026, 5, 31),
+        )
+        ServiceHour.objects.create(
+            student=this_year_profile,
+            description="First day of this year",
+            hours=Decimal("7.00"),
+            date_performed=date(2026, 6, 1),
+        )
+        self.client.force_authenticate(user=self.viewer)
+
+        last_year = self.client.get("/api/leaderboard/?period=last-year")
+        this_year = self.client.get("/api/leaderboard/?period=this-year")
+
+        self.assertEqual(last_year.status_code, 200, last_year.content)
+        self.assertEqual(this_year.status_code, 200, this_year.content)
+        last_year_hours = {row["username"]: row["total_hours"] for row in last_year.data}
+        this_year_hours = {row["username"]: row["total_hours"] for row in this_year.data}
+        self.assertEqual(last_year_hours["last_year_student"], "5.00")
+        self.assertEqual(last_year_hours["this_year_student"], "0.00")
+        self.assertEqual(this_year_hours["last_year_student"], "0.00")
+        self.assertEqual(this_year_hours["this_year_student"], "7.00")
+
 
 class AdminUserManagementTests(TestCase):
     def setUp(self):
